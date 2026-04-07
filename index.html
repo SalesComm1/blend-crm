@@ -359,9 +359,21 @@
       <div class="form-row">
         <div class="form-group">
           <label>Pipeline Stage</label>
-          <select id="f-stage"><option>Lead</option><option>Qualified</option><option>Proposal</option><option>Negotiation</option><option>Won</option><option>Lost</option></select>
+          <select id="f-stage" onchange="toggleDeclineReason()"><option>Lead</option><option>Qualified</option><option>Proposal</option><option>Negotiation</option><option>Won</option><option>Lost</option></select>
         </div>
         <div class="form-group"><label>Monthly Value ($)</label><input type="number" id="f-deal" placeholder="0" min="0"></div>
+      </div>
+      <div class="form-row" id="decline-reason-row" style="display:none">
+        <div class="form-group" style="width:100%">
+          <label>Reason for Declining</label>
+          <select id="f-decline-reason">
+            <option value="">— Select Reason —</option>
+            <option>Too expensive</option>
+            <option>Already has AI</option>
+            <option>Doesn't like AI</option>
+            <option>Won't return phone call</option>
+          </select>
+        </div>
       </div>
       <div class="form-row">
         <div class="form-group"><label>Build Out Cost ($)</label><input type="number" id="f-build-cost" placeholder="0" min="0"></div>
@@ -390,7 +402,9 @@
           <select id="f-source">
             <option value="">— Select Source —</option>
             <option>Referral</option><option>Cold Outreach</option><option>Website</option>
-            <option>Event</option><option>LinkedIn</option><option>Inbound Call</option><option>Other</option>
+            <option>Event</option><option>Inbound Call</option>
+            <option>Existing Customer (Paying)</option><option>Old Customer (not paying)</option>
+            <option>Other</option>
           </select>
         </div>
         <div class="form-group"><label>Last Contact Date</label><input type="date" id="f-last-contact"></div>
@@ -510,6 +524,12 @@ function renderView(v) {
 function openModal(id) { document.getElementById(id).classList.add('open'); }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 // LEADS
+function toggleDeclineReason() {
+  const stage = document.getElementById('f-stage').value;
+  const row = document.getElementById('decline-reason-row');
+  row.style.display = stage === 'Lost' ? 'flex' : 'none';
+  if (stage !== 'Lost') document.getElementById('f-decline-reason').value = '';
+}
 function openAddLead() {
   editingLeadId = null;
   document.getElementById('lead-modal-title').textContent = 'Add Lead';
@@ -517,7 +537,9 @@ function openAddLead() {
   document.getElementById('f-contract-length').value = '';
   document.getElementById('f-stage').value = 'Lead';
   document.getElementById('f-source').value = '';
+  document.getElementById('f-decline-reason').value = '';
   document.getElementById('f-last-contact').value = today();
+  document.getElementById('decline-reason-row').style.display = 'none';
   openModal('lead-modal');
 }
 function openEditLead(id) {
@@ -536,6 +558,8 @@ function openEditLead(id) {
   document.getElementById('f-last-contact').value = l.lastContact||'';
   document.getElementById('f-current-crm').value = l.currentCrm||'';
   document.getElementById('f-notes').value = l.notes||'';
+  document.getElementById('f-decline-reason').value = l.declineReason||'';
+  document.getElementById('decline-reason-row').style.display = l.stage === 'Lost' ? 'flex' : 'none';
   closeModal('detail-modal');
   openModal('lead-modal');
 }
@@ -555,6 +579,7 @@ async function saveLead() {
     lastContact: document.getElementById('f-last-contact').value,
     currentCrm: document.getElementById('f-current-crm').value.trim(),
     notes: document.getElementById('f-notes').value.trim(),
+    declineReason: document.getElementById('f-decline-reason').value,
   };
   if (editingLeadId) { await api('/leads/' + editingLeadId, 'PUT', data); }
   else { await api('/leads', 'POST', data); }
@@ -580,6 +605,7 @@ function openLeadDetail(id) {
     <div class="detail-section">
       <h4>Deal Info</h4>
       <div class="detail-field"><span>Stage:</span><span class="stage-pill pill-${l.stage}">${l.stage}</span></div>
+      ${l.stage==='Lost'&&l.declineReason?`<div class="detail-field"><span>Decline Reason:</span><strong style="color:#ef4444">${l.declineReason}</strong></div>`:''}
       <div class="detail-field"><span>Monthly Value:</span><strong style="color:#22c55e">${formatCurrency(l.deal)}</strong></div>
       <div class="detail-field"><span>Build Out Cost:</span><strong style="color:#22c55e">${formatCurrency(l.buildCost)}</strong></div>
       <div class="detail-field"><span>Contract Length:</span>${l.contractLength||'—'}</div>
@@ -711,10 +737,10 @@ function renderPipeline() {
 function renderLeads() {
   const q=(document.getElementById('leads-search')?.value||'').toLowerCase();
   const sf=document.getElementById('leads-filter-stage')?.value||'';
-  let filtered=leads.filter(l=>(!q||l.company.toLowerCase().includes(q)||l.contact.toLowerCase().includes(q)||(l.email||'').toLowerCase().includes(q))&&(!sf||l.stage===sf));
+  let filtered=leads.filter(l=>(!u||l.company.toLowerCase().includes(q)||l.contact.toLowerCase().includes(q)||(l.email||'').toLowerCase().includes(q))&&(!sf||l.stage===sf));
   const c=document.getElementById('leads-table-container');
   if(filtered.length===0){c.innerHTML='<div class="empty-state"><div class="icon">🔍</div><p>No leads found.</p></div>';return;}
-  c.innerHTML=`<table><thead><tr><th>Company</th><th>Contact</th><th>Stage</th><th>Monthly Value</th><th>Contract</th><th>Last Contact</th><th>Tasks</th></tr></thead><tbody>
+  c.innerHTML<`<table><thead><tr><th>Company</th><th>Contact</th><th>Stage</th><th>Monthly Value</th><th>Contract</th><th>Last Contact</th><th>Tasks</th></tr></thead><tbody>
     ${filtered.map(l=>{
       const open=tasks.filter(t=>t.leadId===l.id&&!t.done).length;
       return `<tr style="cursor:pointer" onclick="openLeadDetail('${l.id}')">
@@ -774,7 +800,7 @@ async function seedSampleData() {
     {company:'Bella Salon',contact:'Maria Torres',email:'maria@bellasalon.com',phone:'(555)201-4321',stage:'Qualified',deal:4800,source:'Referral',lastContact:today(),notes:'Interested in full package. Follow up after their team meeting.'},
     {company:'Glam Studio',contact:'Ashley Park',email:'ashley@glamstudio.io',phone:'(555)882-9900',stage:'Proposal',deal:12000,source:'LinkedIn',lastContact:today(),notes:'Sent proposal. Waiting for feedback from owner.'},
     {company:'The Curl Bar',contact:'Nina Johnson',email:'nina@curlbar.com',phone:'',stage:'Lead',deal:2400,source:'Website',lastContact:today(),notes:''},
-    {company:'Luxe Cuts',contact:'David Chen',email:'david@luxecuts.com',phone:'(555)904-7711',stage:'Negotiation',deal:18000,source:'Event',lastContact:today(),notes:'Close to deal — discussing pricing on annual plan.'},
+    {company:'Luxe Cuts',contact:'David Chen',email:'david@luxecuts.com',phone:'(555)304-7711',stage:'Negotiation',deal:18000,source:'Event',lastContact:today(),notes:'Close to deal — discussing pricing on annual plan.'},
     {company:'Fade & Flow',contact:'Marcus Webb',email:'marcus@fadeflow.net',phone:'',stage:'Won',deal:6000,source:'Referral',lastContact:today(),notes:'Closed! Onboarding starts next Monday.'},
   ];
   const created = await Promise.all(sl.map(l => api('/leads', 'POST', l)));
@@ -867,6 +893,6 @@ loadData().then(() => seedSampleData().then(() => {
     renderAll(); updateBadge();
   }
 }));
- </script>
+</script>
 </body>
 </html>
