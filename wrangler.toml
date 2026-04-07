@@ -1,0 +1,9 @@
+name = "polished-pine-02d8"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+account_id = "9de298dc38661529645fb3f1f9f36dc6"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "blend-crm"
+database_id = "e7f17410-dac4-457f-82c1-f9245ee3acce"
