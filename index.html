@@ -446,21 +446,36 @@
   </div>
 </div>
 <script>
-let leads = JSON.parse(localStorage.getItem('crm_leads_blend') || '[]');
-let tasks = JSON.parse(localStorage.getItem('crm_tasks_blend') || '[]');
-// Migrate from old key if exists
-(function() {
-  const ol = localStorage.getItem('crm_leads'); const ot = localStorage.getItem('crm_tasks');
-  if (ol && leads.length === 0) { leads = JSON.parse(ol); }
-  if (ot && tasks.length === 0) { tasks = JSON.parse(ot); }
-})();
+const API_URL = 'https://polished-pine-02d8.rob-9de.workers.dev';
+let leads = [], tasks = [];
 let editingLeadId = null, editingTaskId = null, taskFilter = 'all', currentDetailLeadId = null;
 const STAGES = ['Lead','Qualified','Proposal','Negotiation','Won','Lost'];
 function uid() { return Date.now().toString(36) + Math.random().toString(36).substr(2,5); }
-function save() {
-  localStorage.setItem('crm_leads_blend', JSON.stringify(leads));
-  localStorage.setItem('crm_tasks_blend', JSON.stringify(tasks));
-  saveToFile();
+
+// ── API helpers ──────────────────────────────────────────────────────────────
+async function api(path, method = 'GET', body = null) {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  try {
+    const res = await fetch(API_URL + path, opts);
+    const data = await res.json();
+    return Array.isArray(data) ? data : (data.error ? null : data);
+  } catch(e) { console.error('API error:', e); return null; }
+}
+async function loadData() {
+  updateSaveStatus('loading');
+  try {
+    const [l, t] = await Promise.all([api('/leads'), api('/tasks')]);
+    leads = l || leads; tasks = t || tasks;
+    updateSaveStatus('synced');
+    setTimeout(() => updateSaveStatus('connected'), 1500);
+  } catch(e) {
+    // Fallback to localStorage if API is unavailable
+    leads = JSON.parse(localStorage.getItem('crm_leads_blend') || '[]');
+    tasks = JSON.parse(localStorage.getItem('crm_tasks_blend') || '[]');
+    updateSaveStatus('disconnected');
+  }
+  renderAll(); updateBadge();
 }
 function today() { return new Date().toISOString().split('T')[0]; }
 function formatDate(d) {
@@ -524,7 +539,7 @@ function openEditLead(id) {
   closeModal('detail-modal');
   openModal('lead-modal');
 }
-function saveLead() {
+async function saveLead() {
   const company = document.getElementById('f-company').value.trim();
   const contact = document.getElementById('f-contact').value.trim();
   if (!company || !contact) { alert('Company and contact name are required.'); return; }
@@ -541,15 +556,14 @@ function saveLead() {
     currentCrm: document.getElementById('f-current-crm').value.trim(),
     notes: document.getElementById('f-notes').value.trim(),
   };
-  if (editingLeadId) { const i = leads.findIndex(x=>x.id===editingLeadId); leads[i]={...leads[i],...data}; }
-  else { leads.unshift({ id:uid(), createdAt:today(), ...data }); }
-  save(); closeModal('lead-modal'); renderAll();
+  if (editingLeadId) { await api('/leads/' + editingLeadId, 'PUT', data); }
+  else { await api('/leads', 'POST', data); }
+  closeModal('lead-modal'); await loadData();
 }
-function deleteLead(id) {
+async function deleteLead(id) {
   if (!confirm('Delete this lead and all linked tasks?')) return;
-  leads = leads.filter(x=>x.id!==id);
-  tasks = tasks.filter(t=>t.leadId!==id);
-  save(); closeModal('detail-modal'); renderAll();
+  await api('/leads/' + id, 'DELETE');
+  closeModal('detail-modal'); await loadData();
 }
 function openLeadDetail(id) {
   const l = leads.find(x=>x.id===id); if (!l) return;
@@ -593,14 +607,16 @@ function openLeadDetail(id) {
   document.getElementById('detail-delete-btn').onclick = () => deleteLead(id);
   openModal('detail-modal');
 }
-function addInlineTask(leadId) {
+async function addInlineTask(leadId) {
   const input = document.getElementById('inline-task-input');
   const title = input.value.trim(); if (!title) return;
-  tasks.push({ id:uid(), title, leadId, due:'', priority:'medium', done:false, notes:'', createdAt:today() });
-  save(); openLeadDetail(leadId); updateBadge();
+  await api('/tasks', 'POST', { title, leadId, due:'', priority:'medium', done:0, notes:'' });
+  await loadData(); openLeadDetail(leadId); updateBadge();
 }
-function toggleTask(taskId, reopen, leadId) {
-  const t = tasks.find(x=>x.id===taskId); if (t) { t.done=!t.done; save(); }
+async function toggleTask(taskId, reopen, leadId) {
+  const t = tasks.find(x=>x.id===taskId);
+  if (t) { await api('/tasks/' + taskId, 'PUT', {...t, done: t.done ? 0 : 1}); }
+  await loadData();
   if (reopen && leadId) openLeadDetail(leadId); else renderTasks();
   updateBadge();
 }
@@ -613,15 +629,15 @@ function openAddTask(preLinkedLeadId) {
   sel.innerHTML = '<option value="">— No linked lead —</option>' + leads.map(l=>`<option value="${l.id}"${l.id===preLinkedLeadId?' selected':''}>${l.company} — ${l.contact}</option>`).join('');
   openModal('task-modal');
 }
-function saveTask() {
+async function saveTask() {
   const title = document.getElementById('t-title').value.trim();
   if (!title) { alert('Task title is required.'); return; }
-  const data = { title, due:document.getElementById('t-due').value, priority:document.getElementById('t-priority').value, leadId:document.getElementById('t-lead').value, notes:document.getElementById('t-notes').value.trim(), done:false, createdAt:today() };
-  if (editingTaskId) { const i=tasks.findIndex(x=>x.id===editingTaskId); tasks[i]={...tasks[i],...data}; }
-  else { tasks.push({ id:uid(), ...data }); }
-  save(); closeModal('task-modal'); renderAll();
+  const data = { title, due:document.getElementById('t-due').value, priority:document.getElementById('t-priority').value, leadId:document.getElementById('t-lead').value, notes:document.getElementById('t-notes').value.trim(), done:0 };
+  if (editingTaskId) { await api('/tasks/' + editingTaskId, 'PUT', {...tasks.find(t=>t.id===editingTaskId), ...data}); }
+  else { await api('/tasks', 'POST', data); }
+  closeModal('task-modal'); await loadData();
 }
-function deleteTask(id) { tasks=tasks.filter(t=>t.id!==id); save(); renderTasks(); updateBadge(); }
+async function deleteTask(id) { await api('/tasks/' + id, 'DELETE'); await loadData(); updateBadge(); }
 function updateBadge() {
   const count = tasks.filter(t=>!t.done&&(isDueToday(t.due)||isOverdue(t.due))).length;
   const b = document.getElementById('task-badge');
@@ -751,23 +767,22 @@ function renderAll() {
   if(!active)return;
   renderView(active.id.replace('view-',''));
 }
-// SEED SAMPLE DATA
-function seedSampleData() {
-  if(leads.length>0)return;
+// SEED SAMPLE DATA — only runs if DB is empty
+async function seedSampleData() {
+  if(leads.length > 0) return;
   const sl=[
-    {id:uid(),company:'Bella Salon',contact:'Maria Torres',email:'maria@bellasalon.com',phone:'(555)201-4321',stage:'Qualified',deal:4800,source:'Referral',lastContact:today(),notes:'Interested in full package. Follow up after their team meeting.',createdAt:today()},
-    {id:uid(),company:'Glam Studio',contact:'Ashley Park',email:'ashley@glamstudio.io',phone:'(555)882-9900',stage:'Proposal',deal:12000,source:'LinkedIn',lastContact:today(),notes:'Sent proposal. Waiting for feedback from owner.',createdAt:today()},
-    {id:uid(),company:'The Curl Bar',contact:'Nina Johnson',email:'nina@curlbar.com',phone:'',stage:'Lead',deal:2400,source:'Website',lastContact:today(),notes:'',createdAt:today()},
-    {id:uid(),company:'Luxe Cuts',contact:'David Chen',email:'david@luxecuts.com',phone:'(555)304-7711',stage:'Negotiation',deal:18000,source:'Event',lastContact:today(),notes:'Close to deal — discussing pricing on annual plan.',createdAt:today()},
-    {id:uid(),company:'Fade & Flow',contact:'Marcus Webb',email:'marcus@fadeflow.net',phone:'',stage:'Won',deal:6000,source:'Referral',lastContact:today(),notes:'Closed! Onboarding starts next Monday.',createdAt:today()},
+    {company:'Bella Salon',contact:'Maria Torres',email:'maria@bellasalon.com',phone:'(555)201-4321',stage:'Qualified',deal:4800,source:'Referral',lastContact:today(),notes:'Interested in full package. Follow up after their team meeting.'},
+    {company:'Glam Studio',contact:'Ashley Park',email:'ashley@glamstudio.io',phone:'(555)882-9900',stage:'Proposal',deal:12000,source:'LinkedIn',lastContact:today(),notes:'Sent proposal. Waiting for feedback from owner.'},
+    {company:'The Curl Bar',contact:'Nina Johnson',email:'nina@curlbar.com',phone:'',stage:'Lead',deal:2400,source:'Website',lastContact:today(),notes:''},
+    {company:'Luxe Cuts',contact:'David Chen',email:'david@luxecuts.com',phone:'(555)904-7711',stage:'Negotiation',deal:18000,source:'Event',lastContact:today(),notes:'Close to deal — discussing pricing on annual plan.'},
+    {company:'Fade & Flow',contact:'Marcus Webb',email:'marcus@fadeflow.net',phone:'',stage:'Won',deal:6000,source:'Referral',lastContact:today(),notes:'Closed! Onboarding starts next Monday.'},
   ];
-  leads.push(...sl);
-  tasks.push(
-    {id:uid(),title:'Follow up with Maria re: team meeting',leadId:sl[0].id,due:today(),priority:'high',done:false,notes:'',createdAt:today()},
-    {id:uid(),title:'Send revised proposal to Glam Studio',leadId:sl[1].id,due:today(),priority:'high',done:false,notes:'',createdAt:today()},
-    {id:uid(),title:'Finalize pricing with Luxe Cuts',leadId:sl[3].id,due:today(),priority:'medium',done:false,notes:'',createdAt:today()},
-  );
-  save();
+  const created = await Promise.all(sl.map(l => api('/leads', 'POST', l)));
+  await Promise.all([
+    api('/tasks','POST',{title:'Follow up with Maria re: team meeting',leadId:created[0]?.id,due:today(),priority:'high',done:0,notes:''}),
+    api('/tasks','POST',{title:'Send revised proposal to Glam Studio',leadId:created[1]?.id,due:today(),priority:'high',done:0,notes:''}),
+    api('/tasks','POST',{title:'Finalize pricing with Luxe Cuts',leadId:created[3]?.id,due:today(),priority:'medium',done:0,notes:''}),
+  ]);
 }
 // ========== FILE SYSTEM AUTO-SAVE ==========
 let dirHandle = null;
@@ -797,10 +812,11 @@ function updateSaveStatus(status) {
   const el = document.getElementById('save-status');
   if (!el) return;
   const states = {
-    connected:    { text: '● Auto-save on',  color: '#22c55e' },
-    synced:       { text: '✓ Saved',          color: '#22c55e' },
-    disconnected: { text: '○ Auto-save off',  color: '#7c6d9a' },
-    error:        { text: '⚠ Save error',     color: '#ef4444' }
+    connected:    { text: '☁ Synced to Cloud',  color: '#22c55e' },
+    synced:       { text: '✓ Saved',              color: '#22c55e' },
+    loading:      { text: '⟳ Loading...',         color: '#7c6d9a' },
+    disconnected: { text: '○ Offline (local)',     color: '#E8A020' },
+    error:        { text: '⚠ Sync error',          color: '#ef4444' }
   };
   const s = states[status] || states.disconnected;
   el.textContent = s.text;
@@ -844,9 +860,13 @@ async function saveToFile() {
     updateSaveStatus('error');
   }
 }
-seedSampleData();
-initFileSystem();
+// Boot: load from Cloudflare, seed if empty, then render
 showView('dashboard');
-</script>
+loadData().then(() => seedSampleData().then(() => {
+  if (leads.length > 0 && document.querySelector('.view.active')?.id === 'view-dashboard') {
+    renderAll(); updateBadge();
+  }
+}));
+ </script>
 </body>
 </html>
