@@ -374,6 +374,7 @@
         </div>
         <div class="form-group"><label>Last Contact Date</label><input type="date" id="f-last-contact"></div>
       </div>
+      <div class="form-group"><label>Current CRM</label><input type="text" id="f-current-crm" placeholder="e.g. HubSpot, Salesforce, Spreadsheet..."></div>
       <div class="form-group"><label>Notes</label><textarea id="f-notes" placeholder="Important details about this lead..."></textarea></div>
     </div>
     <div class="modal-footer">
@@ -476,7 +477,7 @@ function closeModal(id) { document.getElementById(id).classList.remove('open'); 
 function openAddLead() {
   editingLeadId = null;
   document.getElementById('lead-modal-title').textContent = 'Add Lead';
-  ['f-company','f-contact','f-email','f-phone','f-deal','f-notes','f-last-contact'].forEach(i => document.getElementById(i).value='');
+  ['f-company','f-contact','f-email','f-phone','f-deal','f-notes','f-last-contact','f-current-crm'].forEach(i => document.getElementById(i).value='');
   document.getElementById('f-stage').value = 'Lead';
   document.getElementById('f-source').value = '';
   document.getElementById('f-last-contact').value = today();
@@ -494,6 +495,7 @@ function openEditLead(id) {
   document.getElementById('f-deal').value = l.deal||'';
   document.getElementById('f-source').value = l.source||'';
   document.getElementById('f-last-contact').value = l.lastContact||'';
+  document.getElementById('f-current-crm').value = l.currentCrm||'';
   document.getElementById('f-notes').value = l.notes||'';
   closeModal('detail-modal');
   openModal('lead-modal');
@@ -510,6 +512,7 @@ function saveLead() {
     deal: document.getElementById('f-deal').value||0,
     source: document.getElementById('f-source').value,
     lastContact: document.getElementById('f-last-contact').value,
+    currentCrm: document.getElementById('f-current-crm').value.trim(),
     notes: document.getElementById('f-notes').value.trim(),
   };
   if (editingLeadId) { const i = leads.findIndex(x=>x.id===editingLeadId); leads[i]={...leads[i],...data}; }
@@ -539,6 +542,7 @@ function openLeadDetail(id) {
       <div class="detail-field"><span>Stage:</span><span class="stage-pill pill-${l.stage}">${l.stage}</span></div>
       <div class="detail-field"><span>Value:</span><strong style="color:#22c55e">${formatCurrency(l.deal)}</strong></div>
       <div class="detail-field"><span>Source:</span>${l.source||'—'}</div>
+      <div class="detail-field"><span>Current CRM:</span>${l.currentCrm||'—'}</div>
       <div class="detail-field"><span>Last Contact:</span>${formatDate(l.lastContact)}</div>
       <div class="detail-field"><span>Added:</span>${formatDate(l.createdAt)}</div>
     </div>
