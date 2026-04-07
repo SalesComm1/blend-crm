@@ -361,7 +361,28 @@
           <label>Pipeline Stage</label>
           <select id="f-stage"><option>Lead</option><option>Qualified</option><option>Proposal</option><option>Negotiation</option><option>Won</option><option>Lost</option></select>
         </div>
-        <div class="form-group"><label>Deal Value ($)</label><input type="number" id="f-deal" placeholder="0" min="0"></div>
+        <div class="form-group"><label>Monthly Value ($)</label><input type="number" id="f-deal" placeholder="0" min="0"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Build Out Cost ($)</label><input type="number" id="f-build-cost" placeholder="0" min="0"></div>
+        <div class="form-group">
+          <label>Contract Length</label>
+          <select id="f-contract-length">
+            <option value="">— Select Length —</option>
+            <option>1 Month</option><option>2 Months</option><option>3 Months</option>
+            <option>4 Months</option><option>5 Months</option><option>6 Months</option>
+            <option>7 Months</option><option>8 Months</option><option>9 Months</option>
+            <option>10 Months</option><option>11 Months</option><option>12 Months</option>
+            <option>13 Months</option><option>14 Months</option><option>15 Months</option>
+            <option>16 Months</option><option>17 Months</option><option>18 Months</option>
+            <option>19 Months</option><option>20 Months</option><option>21 Months</option>
+            <option>22 Months</option><option>23 Months</option><option>24 Months</option>
+            <option>25 Months</option><option>26 Months</option><option>27 Months</option>
+            <option>28 Months</option><option>29 Months</option><option>30 Months</option>
+            <option>31 Months</option><option>32 Months</option><option>33 Months</option>
+            <option>34 Months</option><option>35 Months</option><option>36 Months</option>
+          </select>
+        </div>
       </div>
       <div class="form-row">
         <div class="form-group">
@@ -477,7 +498,8 @@ function closeModal(id) { document.getElementById(id).classList.remove('open'); 
 function openAddLead() {
   editingLeadId = null;
   document.getElementById('lead-modal-title').textContent = 'Add Lead';
-  ['f-company','f-contact','f-email','f-phone','f-deal','f-notes','f-last-contact','f-current-crm'].forEach(i => document.getElementById(i).value='');
+  ['f-company','f-contact','f-email','f-phone','f-deal','f-build-cost','f-notes','f-last-contact','f-current-crm'].forEach(i => document.getElementById(i).value='');
+  document.getElementById('f-contract-length').value = '';
   document.getElementById('f-stage').value = 'Lead';
   document.getElementById('f-source').value = '';
   document.getElementById('f-last-contact').value = today();
@@ -493,6 +515,8 @@ function openEditLead(id) {
   document.getElementById('f-phone').value = l.phone||'';
   document.getElementById('f-stage').value = l.stage||'Lead';
   document.getElementById('f-deal').value = l.deal||'';
+  document.getElementById('f-build-cost').value = l.buildCost||'';
+  document.getElementById('f-contract-length').value = l.contractLength||'';
   document.getElementById('f-source').value = l.source||'';
   document.getElementById('f-last-contact').value = l.lastContact||'';
   document.getElementById('f-current-crm').value = l.currentCrm||'';
@@ -510,6 +534,8 @@ function saveLead() {
     phone: document.getElementById('f-phone').value.trim(),
     stage: document.getElementById('f-stage').value,
     deal: document.getElementById('f-deal').value||0,
+    buildCost: document.getElementById('f-build-cost').value||0,
+    contractLength: document.getElementById('f-contract-length').value,
     source: document.getElementById('f-source').value,
     lastContact: document.getElementById('f-last-contact').value,
     currentCrm: document.getElementById('f-current-crm').value.trim(),
@@ -540,7 +566,9 @@ function openLeadDetail(id) {
     <div class="detail-section">
       <h4>Deal Info</h4>
       <div class="detail-field"><span>Stage:</span><span class="stage-pill pill-${l.stage}">${l.stage}</span></div>
-      <div class="detail-field"><span>Value:</span><strong style="color:#22c55e">${formatCurrency(l.deal)}</strong></div>
+      <div class="detail-field"><span>Monthly Value:</span><strong style="color:#22c55e">${formatCurrency(l.deal)}</strong></div>
+      <div class="detail-field"><span>Build Out Cost:</span><strong style="color:#22c55e">${formatCurrency(l.buildCost)}</strong></div>
+      <div class="detail-field"><span>Contract Length:</span>${l.contractLength||'—'}</div>
       <div class="detail-field"><span>Source:</span>${l.source||'—'}</div>
       <div class="detail-field"><span>Current CRM:</span>${l.currentCrm||'—'}</div>
       <div class="detail-field"><span>Last Contact:</span>${formatDate(l.lastContact)}</div>
@@ -670,7 +698,7 @@ function renderLeads() {
   let filtered=leads.filter(l=>(!q||l.company.toLowerCase().includes(q)||l.contact.toLowerCase().includes(q)||(l.email||'').toLowerCase().includes(q))&&(!sf||l.stage===sf));
   const c=document.getElementById('leads-table-container');
   if(filtered.length===0){c.innerHTML='<div class="empty-state"><div class="icon">🔍</div><p>No leads found.</p></div>';return;}
-  c.innerHTML=`<table><thead><tr><th>Company</th><th>Contact</th><th>Stage</th><th>Deal Value</th><th>Last Contact</th><th>Tasks</th></tr></thead><tbody>
+  c.innerHTML=`<table><thead><tr><th>Company</th><th>Contact</th><th>Stage</th><th>Monthly Value</th><th>Contract</th><th>Last Contact</th><th>Tasks</th></tr></thead><tbody>
     ${filtered.map(l=>{
       const open=tasks.filter(t=>t.leadId===l.id&&!t.done).length;
       return `<tr style="cursor:pointer" onclick="openLeadDetail('${l.id}')">
@@ -678,6 +706,7 @@ function renderLeads() {
         <td><div style="font-weight:600">${l.contact}</div><div style="font-size:11.5px;color:var(--text-muted)">${l.email||''}</div></td>
         <td><span class="stage-pill pill-${l.stage}">${l.stage}</span></td>
         <td style="font-weight:700;color:#22c55e">${formatCurrency(l.deal)}</td>
+        <td style="color:var(--text-muted)">${l.contractLength||'—'}</td>
         <td style="color:var(--text-muted)">${formatDate(l.lastContact)}</td>
         <td>${open>0?`<span style="color:var(--gold);font-weight:700">⏰ ${open}</span>`:'<span style="color:var(--border)">—</span>'}</td>
       </tr>`;
